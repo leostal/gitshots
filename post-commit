@@ -1,11 +1,34 @@
 #!/usr/bin/env node
 
-const { execSync } = require('child_process');
+const { spawn } = require('child_process');
 const os = require('os');
 const path = require('path');
 
-const time = Date.now();
-// home directory handling
-const fileName = path.join(os.homedir(), '.git-shots', `${time}.jpg`);
-execSync(`imagesnap -w 2 "${fileName}"`);
+const escapeForSingleQuotes = (value) =>
+  `'${String(value).replace(/'/g, `'\\''`)}'`;
 
+const fileName = path.join(os.homedir(), '.git-shots', `${Date.now()}.jpg`);
+const notificationTitle = 'Post-commit hook';
+const successSubtitle = `Saved as ${path.basename(fileName)}`;
+const failureSubtitle = 'Check camera connection';
+
+// run the capture flow detached so git commit is not blocked by camera delays
+const script = `
+if imagesnap -w 2 ${escapeForSingleQuotes(fileName)} >/dev/null 2>&1; then
+  osascript -e ${escapeForSingleQuotes(
+    `display notification "Photo captured" with title "${notificationTitle}" subtitle "${successSubtitle}"`
+  )}
+else
+  status=$?
+  osascript -e ${escapeForSingleQuotes(
+    `display notification "Photo capture failed (exit $status)" with title "${notificationTitle}" subtitle "${failureSubtitle}"`
+  )}
+fi
+`;
+
+const child = spawn('bash', ['-lc', script], {
+  detached: true,
+  stdio: 'ignore',
+});
+
+child.unref();
